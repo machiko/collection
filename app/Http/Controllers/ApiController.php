@@ -25,7 +25,7 @@ class ApiController extends Controller
 
         curl_setopt_array($ch, $options);
 	    $output = curl_exec($ch);
-        
+
 	    curl_close($ch);
 
 	    // Find the table
@@ -39,19 +39,39 @@ class ApiController extends Controller
         {
             case 'udn':
                 $domain = 'udn';
+                preg_match("/<div id=\"story\".*class=\"area\">(.+?)<\/div>/s", $output, $metaContentsMatches);
                 break;
             case 'yahoo':
                 // for yahoo
                 $domain = 'yahoo';
-                preg_match("/<!-- google_ad_section_start -->(.*?)<!-- google_ad_section_end -->/s", $output, $metaContentsMatches);
-                $content_clean_tags = preg_replace("/<[^>]*>/", "", $metaContentsMatches);
-                preg_match("/(.*。)/s", $content_clean_tags[0], $content);
-                $content_trim = preg_replace("/&nbsp;/", "", $content[1]);
+                preg_match("/<!-- google_ad_section_start -->(.+?)<!-- google_ad_section_end -->/s", $output, $metaContentsMatches);
+                break;
+            case 'tvbs':
+                $domain = 'tvbs';
+                break;
+            case 'yam':
+                $domain = 'yam';
+                preg_match("/<div id=\"news_content\">(.+?)<\/div>/s", $output, $metaContentsMatches);
+                break;
+            case 'uho':
+                $domain = 'uho';
+                break;
+            case 'people':
+                $domain = 'people';
+                break;
+            case 'pchome':
+                $domain = 'pchome';
+                // pchome 的 class attribute 寫錯...
+                preg_match("/<div calss=\"article_text\">(.+?)<\/div>/s", $output, $metaContentsMatches);
                 break;
             default:
                 $domain = 'default';
                 break;
         }
+
+        $content_clean_tags = preg_replace("/<[^>]*>/", "", $metaContentsMatches);
+        preg_match("/(.*。)/s", $content_clean_tags[0], $content);
+        $content_trim = preg_replace("/&nbsp;/", "", $content[1]);
 
 	    /*preg_match("/<meta.*?name=\"description\".*?content=\"(.*?)\".*?>|<meta.*?content=\"(.*?)\".*?name=\"description\".*?>/i", $output, $metaContentsMatches);*/
 	    /*preg_match("/<meta.*?name=\"description\".*?content=\"(.*?)\".*?>|<meta.*?content=\"(.*?)\".*?name=\"description\".*?>/i", $output, $metaContentsMatches);*/
