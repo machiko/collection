@@ -12,7 +12,7 @@
 */
 Route::resource('/', 'HomeController');
 
-Route::get('api/curl', ['uses' => 'ApiController@getCurl']);
+Route::match(['get', 'post'], 'api/curl', ['uses' => 'ApiController@getCurl']);
 // Route::get('/', function () {
 //     return view('home.index');
 // });
