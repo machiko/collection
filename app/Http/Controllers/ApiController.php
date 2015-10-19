@@ -56,10 +56,12 @@ class ApiController extends Controller
         foreach ($url_arr as $index => $url)
         {
             // $url = "http://www.taiwanlottery.com.tw/lotto/DailyCash/history.aspx";
-            $url = $this->clearUrl($url)['url'];
-            $reg_str = $this->clearUrl($url)['reg_str'];
-            $dom_str = $this->clearUrl($url)['dom_str'];
-            $domain = $this->clearUrl($url)['domain'];
+            $clear_url = $this->clearUrl($url);
+            debug($clear_url);
+            $url = $clear_url['url'];
+            $reg_str = $clear_url['reg_str'];
+            $dom_str = $clear_url['dom_str'];
+            $domain = $clear_url['domain'];
 
             //----- curl start -----//
             // $ch = curl_init();
@@ -67,17 +69,24 @@ class ApiController extends Controller
             // $options = array(
             //     CURLOPT_URL => $url,
             //     CURLOPT_RETURNTRANSFER => true,
-            //     CURLOPT_USERAGENT => 'Google Bot',
+            //     // CURLOPT_USERAGENT => 'Google Bot',
+            //     CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4',
             //     CURLOPT_HEADER => false,
+            //     CURLOPT_SSL_VERIFYPEER => FALSE,
+            //     CURLOPT_FOLLOWLOCATION => true,
+            //     CURLOPT_REFERER => $url
             // );
 
             // curl_setopt_array($ch, $options);
             // $origin_output = curl_exec($ch);
 
             // curl_close($ch);
+            // echo($origin_output);
             //----- curl end -----//
             $html = new Htmldom($url);
-            $origin_output = $html->find($dom_str, 0)->innertext;
+            if ($domain != 'default') {
+                $origin_output = is_null($html->find($dom_str, 0))?'': $html->find($dom_str, 0)->innertext;
+            }
 
             // foreach($eles as $e) {
             //     debug($e->innertext);
@@ -91,15 +100,14 @@ class ApiController extends Controller
             if ($reg_str != '')
             {
                 // debug($reg_str);
-                debug($origin_output);
+                // debug($origin_output);
                 preg_match($reg_str, $origin_output, $metaContentsMatches);
                 // debug($metaContentsMatches);
             }
 
             $content_trim = '';
-            if ($domain != 'default')
+            if ($domain != 'default' && $origin_output != '' && !empty($metaContentsMatches))
             {
-                // debug($metaContentsMatches);
                 $content_clean_tags = preg_replace('/<[^>]*>/', '', $metaContentsMatches);
                 preg_match('/(.*。)/s', $content_clean_tags[0], $content);
                 $content_trim = preg_replace('/&nbsp;/', '', $content[1]);
@@ -134,12 +142,17 @@ class ApiController extends Controller
         $reg_str = '';
         $dom_str = '';
 
-        preg_match('/http[s]?:\/\/.*\.(.*)\.[com|net]/', $url, $filter_domain);
+        preg_match('/http[s]?:\/\/.*\.(.*)\.(com|net)/', $url, $filter_domain);
         switch ($filter_domain[1])
         {
             case 'udn':
                 $domain = 'udn';
                 $reg_str = '/<div id=\"story\".*class=\"area\">(.+?)<\/div>/s';
+                // 處理 url encode
+                $find = array('/%3[a,A]/', '/%2[f,F]/');
+                $replace = array(':', '/');
+                $url =  preg_replace($find, $replace, urlencode($url));
+                $dom_str = 'div[id=story]';
                 break;
             case 'yahoo':
                 // for yahoo
@@ -153,8 +166,9 @@ class ApiController extends Controller
                 //     // $url =  preg_replace("/.mobi/", "", $url);
                 //     $url =  preg_replace($find, $replace, $url);
                 // }
+                $dom_str = 'div[id=mediaarticlebody]';
                 $url =  preg_replace($find, $replace, $url);
-                // debug($url);
+                debug($url);
                 $reg_str = '/<!-- google_ad_section_start -->(.+?)<!-- google_ad_section_end -->/s';
                 break;
             case 'tvbs':
@@ -162,7 +176,7 @@ class ApiController extends Controller
                 break;
             case 'yam':
                 $domain = 'yam';
-                $url = preg_replace("/_pic|\?pic=\d/", "", $url);
+                $url = preg_replace('/_pic|\?pic=\d/', '', $url);
                 // $reg_str = '/<div id=\"news_content\">(.+?)<\/div>/s';
                 $reg_str = '/<p\s.+>(.+)。<\/p>/s';
                 $dom_str = 'div[id=news_content]';
@@ -176,6 +190,7 @@ class ApiController extends Controller
             case 'pchome':
                 $domain = 'pchome';
                 $reg_str = '/<div calss=\"article_text\">(.+?)<\/div>/s';
+                $dom_str = 'div[class=article_text]';
                 break;
             case 'nownews':
                 $domain = 'nownews';
@@ -188,11 +203,32 @@ class ApiController extends Controller
                 $reg_str = '/<p>(.+)。<\/p>/s';
                 $dom_str = 'div[class=articlebody]';
                 break;
+            case 'appledaily':
+                $domain = 'appledaily';
+                $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                $dom_str = 'div[class=articulum]';
+                break;
+            case 'bayvoice':
+                $domain = 'bayvoice';
+                $url = preg_replace('/gb/s', 'b5', $url);
+                $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                $dom_str = 'article[id=content-body]';
+                break;
+            case 'msn':
+                $domain = 'msn';
+                $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                // 處理 url encode
+                $find = array('/%3[a,A]/', '/%2[f,F]/');
+                $replace = array(':', '/');
+                $url =  preg_replace($find, $replace, urlencode($url));
+                $dom_str = 'section[class=articlebody]';
+                break;
             default:
                 $domain = 'default';
                 break;
         }
 
+        // $url_utf8_encode_str = '/([\\x{4e00}-\\x{9fa5}]+)/u';
         return array('url' => $url, 'reg_str' => $reg_str, 'domain' => $domain, 'dom_str' => $dom_str);
     }
 }
