@@ -3,7 +3,7 @@
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
 
-class CreateUrlsTable extends Migration
+class SetNewsUrlColumnToUnique extends Migration
 {
     /**
      * Run the migrations.
@@ -12,12 +12,8 @@ class CreateUrlsTable extends Migration
      */
     public function up()
     {
-        Schema::create('urls', function(Blueprint $table) {
-            $table->increments('id');
-            $table->string('url');
-            // $table->string('url');
-            // $table->float('csa_value');
-            $table->timestamps();
+        Schema::table('news_urls', function($table) {
+            $table->unique('url');
         });
     }
 
@@ -28,6 +24,8 @@ class CreateUrlsTable extends Migration
      */
     public function down()
     {
-        Schema::drop('urls');
+        Schema::table('news_urls', function($table) {
+            $table->dropUnique('url');
+        });
     }
 }

@@ -13,6 +13,8 @@
 Route::resource('/', 'HomeController');
 
 Route::match(['get', 'post'], 'api/curl', ['uses' => 'ApiController@getCurl']);
+Route::post('api/add_news_similar', ['uses' => 'ApiController@postNewsSimilars']);
+Route::post('api/add_url', ['uses' => 'ApiController@postUrl']);
 // Route::get('/', function () {
 //     return view('home.index');
 // });

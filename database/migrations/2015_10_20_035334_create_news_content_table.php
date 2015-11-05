@@ -3,7 +3,7 @@
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
 
-class CreateSimilarTable extends Migration
+class CreateNewsContentTable extends Migration
 {
     /**
      * Run the migrations.
@@ -12,11 +12,12 @@ class CreateSimilarTable extends Migration
      */
     public function up()
     {
-        Schema::create('similar', function(Blueprint $table) {
+        Schema::create('news_content', function(Blueprint $table) {
             $table->increments('id');
-            $table->integer('main_url_id');
-            $table->integer('sub_url_id');
-            $table->float('value');
+            $table->integer('url_id');
+            $table->string('article');
+            $table->string('author');
+            $table->text('content');
             $table->timestamps();
         });
     }
@@ -28,6 +29,6 @@ class CreateSimilarTable extends Migration
      */
     public function down()
     {
-        Schema::drop('similar');
+        Schema::drop('news_content');
     }
 }
