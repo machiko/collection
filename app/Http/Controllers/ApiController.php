@@ -38,50 +38,50 @@ class ApiController extends Controller
         $url = $request->input('url');
         $content_trim_arr = [];
         $domain_arr = [];
+        $host_arr = [];
         $title_arr = [];
         // $org_arr = [];
         $ids_arr = [];
 
         // return response()->json(['url' => $url])
         //          ->setCallback($request->input('callback'));
-
         if (!isset($url))
             return 0;
         // 如果丟進來不是 array, 組成 array
-        if (!is_array($url))
-        {
+        if (!is_array($url)) {
             array_push($url_arr, $url);
         }
-        else
-        {
+        else {
             $url_arr = $url;
         }
 
         // 分析 array's url
-        foreach ($url_arr as $index => $url)
-        {
+        foreach ($url_arr as $index => $url) {
             // $url = "http://www.taiwanlottery.com.tw/lotto/DailyCash/history.aspx";
-            // debug($clear_url);
             $clear_url = $this->clearUrl($url);
             $url = $clear_url['url'];
             $reg_str = $clear_url['reg_str'];
             $content_str = $clear_url['dom_str'];
             $title_str = $clear_url['title_str'];
+            $remove_str_arr = $clear_url['remove_str_arr'];
+            $curl_useragent = $clear_url['curl_useragent'];
             // $org_str = $clear_url['org_str'];
             $domain = $clear_url['domain'];
+            $host = $clear_url['host'];
             $news_url = new NewsUrl;
+            $news_url_inst = $news_url->where('url', $url)->first();
 
             // 尋找是否已有資料，沒有才執行 parser
-            if ($news_url->where('url', $url)->first() == null)
-            {
+            if ($news_url_inst == null || $news_url_inst->newscontent->content == '') {
                 //----- curl start -----//
                 $ch = curl_init();
 
                 $options = array(
                     CURLOPT_URL => $url,
                     CURLOPT_RETURNTRANSFER => true,
-                    // CURLOPT_USERAGENT => 'Google Bot',
-                    CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4',
+                    CURLOPT_USERAGENT => $curl_useragent,
+                    // CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4',
+                    // CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:38.0) Gecko/20100101 Firefox/38.0',
                     CURLOPT_HEADER => false,
                     CURLOPT_SSL_VERIFYPEER => FALSE,
                     CURLOPT_FOLLOWLOCATION => true,
@@ -99,56 +99,74 @@ class ApiController extends Controller
                 if (empty($html->nodes)) {
                     continue;
                 }
+
                 $title = '';
-                if ($domain != 'default') {
-                    $origin_output = is_null($html->find($content_str, 0))?'': $html->find($content_str, 0)->innertext;
+                if ($host != 'default') {
+                    // $origin_output = is_null($html->find($content_str, 0))?'': $html->find($content_str, 0)->innertext;
+                    if (is_null($html->find($content_str, 0)) || empty($html->find($content_str, 0))) {
+                        $origin_output = '';
+                    }
+                    else {
+                        $origin_output = $html->find($content_str, 0);
+                        foreach ($remove_str_arr as $remove_str) {
+                            foreach ($origin_output->find($remove_str) as $remove_inst) {
+                                $remove_inst->outertext = '';
+                            }
+                        }
+                        $origin_output = $origin_output->innertext;
+                    }
+                    // $origin_output = is_null($html->find($content_str, 0))?'': $html->find($content_str, 0);
                     $title = empty($html->find($title_str, 0))?'': trim($html->find($title_str, 0)->plaintext);
+                    // dd($remove_str_arr[1]);
+                    // dd(120, $reg_str, $title, $origin_output);
                     // $org = $html->find($org_str, 0)->innertext;
-                    dd($title, $title_str, $origin_output, $content_str);
                 }
-                if ($reg_str != '')
-                {
-                    // debug($reg_str);
+
+                if ($reg_str != '') {
                     preg_match($reg_str, $origin_output, $metaContentsMatches);
+                    // dd(125, $reg_str, $metaContentsMatches);
                 }
 
                 $content_trim = '';
-                if ($domain != 'default' && $origin_output != '' && !empty($metaContentsMatches))
-                {
-                    $content_clean_tags = preg_replace('/<[^>]*>/', '', $metaContentsMatches);
+                if ($domain != 'default' && $origin_output != '' && !empty($metaContentsMatches)) {
+                    $find = array('/<script.*>.*<\/script>/','/<[^>]*>/', '/\t/');
+                    $replace = array('', '', '');
+                    $content_clean_tags =  preg_replace($find, $replace, $metaContentsMatches);
+                    // $content_clean_tags = preg_replace('/<[^>]*>/', '', $metaContentsMatches);
+                    // dd(134, $metaContentsMatches);
                     preg_match('/(.*。)/s', $content_clean_tags[0], $content);
-                    $content_trim = preg_replace('/&nbsp;/', '', $content[1]);
+                    $content_trim = trim(preg_replace('/&nbsp;/', '', $content[1]));
                 }
-            }
-            else
-            {
+                // dd(138, $content_trim);
+                // insert to database
+
+                if ($news_url_inst == null) {
+                    $news_url->url = $url;
+                    $news_content = new NewsContent;
+                    $news_url->save();
+                    $news_content->url_id = $news_url->id;
+                    $news_content->article = $title;
+                    // $news_content->author = '';
+                    $news_content->content = $content_trim;
+                    $news_content->save();
+                    $url_id = $news_content->id;
+                }
+                else if ($news_url_inst->newscontent->content == '') {
+                    $news_url_inst->newscontent->article = $title;
+                    $news_url_inst->newscontent->content = $content_trim;
+                    $news_url_inst->newscontent->save();
+                    $url_id = $news_url_inst->id;
+                }
 
             }
-
-            // insert to database
-            // $news_url = new NewsUrl;
-
-            // 尋找是否已有資料，沒有才存入資料庫
-            if ($news_url->where('url', $url)->first() == null)
-            {
-                $news_url->url = $url;
-                $news_url->save();
-                $news_content = new NewsContent;
-                $news_content->url_id = $news_url->id;
-                $news_content->article = $title;
-                // $news_content->author = '';
-                $news_content->content = $content_trim;
-                $news_content->save();
-                $url_id = $news_content->id;
-            }
-            else
-            {
+            else {
                 $url_id = $news_url->where('url', $url)->pluck('id');
                 $content_trim = $news_url->find($url_id)->newscontent->content;
                 $title = trim($news_url->find($url_id)->newscontent->article);
             }
 
             array_push($domain_arr, $domain);
+            array_push($host_arr, $host);
             array_push($title_arr, $title);
             // array_push($org_arr, $org);
             array_push($ids_arr, $url_id);
@@ -163,7 +181,7 @@ class ApiController extends Controller
         // $tables = array();
         // return string($origin_output);
         // echo html_entity_decode($origin_output);
-        return response()->json(['domain' => $domain_arr, 'content' => $content_trim_arr, 'url' => $url_clear_arr,
+        return response()->json(['domain' => $domain_arr, 'host' => $host_arr, 'content' => $content_trim_arr, 'url' => $url_clear_arr,
             'id' => $ids_arr, 'title' => $title_arr])->setCallback($request->input('callback'));
         // return response()->json(['url' => $url])
         //          ->setCallback($request->input('callback'));
@@ -181,126 +199,177 @@ class ApiController extends Controller
         $content_str = '';
         $title_str = '';
         $org_str = '';
+        $remove_str_arr = [];
+        $domain = 'default';
+        $curl_useragent = 'Google Bot';
+        // preg_match('/http[s]?:\/\/(.*\.)?(.*)\.(com|net|mg|tw)/', $url, $filter_domain);
+        // $filter_domain = $this->parseURL($url);
+        $filter_domain = $this->getDoamin($url);
 
-        preg_match('/http[s]?:\/\/(.*\.)?(.*)\.(com|net)/', $url, $filter_domain);
-        switch ($filter_domain[2])
-        {
-            case 'udn':
-                $domain = 'udn';
-                $title_str = 'h2[id=story_art_title]';
-                $content_str = 'div[id=story_body_content]';
-                // $reg_str = '/<div id=\"story\".*class=\"area\">(.+?)<\/div>/s';
-                $reg_str = '/<p>(.+)。<\/p>/s';
+        if (!empty($filter_domain)) {
+            $domain = $filter_domain['domain'];
+            $host = $filter_domain['host'];
 
-                // 處理 url encode
-                $find = array('/%3[a,A]/', '/%2[f,F]/');
-                $replace = array(':', '/');
-                $url =  preg_replace($find, $replace, urlencode($url));
-                break;
-            case 'yahoo':
-                // for yahoo
-                $domain = 'yahoo';
-                $title_str = 'h1[class=headline]';
-                $content_str = 'div[id=mediaarticlebody]';
-                $reg_str = '/<!-- google_ad_section_start -->(.+?)<!-- google_ad_section_end -->/s';
-
-                $find = array('/news\//', '/mobi/', '/\/home/');
-                $replace = array('', 'news', '');
-                // $org_str = 'span[class=provider]';
-                $url =  preg_replace($find, $replace, $url);
-                break;
-            case 'tvbs':
-                $domain = 'tvbs';
-                break;
-            case 'yam':
-                $domain = 'yam';
-                $title_str = 'li[class=title]';
-                $content_str = 'div[id=news_content]';
-                $reg_str = '/<p\s.+>(.+)。<\/p>/s';
-                $url = preg_replace('/_pic|\?pic=\d/', '', $url);
-                break;
-            case 'uho':
-                $domain = 'uho';
-                break;
-            case 'people':
-                $domain = 'people';
-                break;
-            case 'pchome':
-                $domain = 'pchome';
-                $content_str = 'div[class=article_text]';
-                $reg_str = '/<div calss=\"article_text\">(.+?)<\/div>/s';
-                break;
-            case 'nownews':
-                $domain = 'nownews';
-                $content_str = 'div[class=story_content]';
-                // $reg_str = '/<div class=\"story_content\".*>(.+?)<div class=\"page_nav\"/s';
-                $reg_str = '/<p>(.+)。<\/p>/s';
-                break;
-            case 'secretchina':
-                $domain = 'secretchina';
-                $content_str = 'div[class=articlebody]';
-                $reg_str = '/<p>(.+)。<\/p>/s';
-                break;
-            case 'appledaily':
-                $domain = 'appledaily';
-                $content_str = 'div[class=articulum]';
-                $reg_str = '/<p\s.*>(.+)<\/p>/s';
-                break;
-            case 'bayvoice':
-                $domain = 'bayvoice';
-                $content_str = 'article[id=content-body]';
-                $reg_str = '/<p\s.*>(.+)<\/p>/s';
-                $url = preg_replace('/gb/s', 'b5', $url);
-                break;
-            case 'msn':
-                $domain = 'msn';
-                $content_str = 'section[class=articlebody]';
-                $reg_str = '/<p\s.*>(.+)<\/p>/s';
-                // 處理 url encode
-                $find = array('/%3[a,A]/', '/%2[f,F]/');
-                $replace = array(':', '/');
-                $url =  preg_replace($find, $replace, urlencode($url));
-                break;
-            case 'top1health':
-                $domain = 'top1health';
-                $content_str = 'div[class=content]';
-                $reg_str = '/<p>(.+)。<\/p>/s';
-                break;
-            case 'times-bignews':
-                $domain = 'times-bignews';
-                $content_str = 'div[class=news_content]';
-                $reg_str = '/<p>(.+)。<\/p>/s';
-                break;
-            case 'cna':
-                $domain = 'cna';
-                $title_str = 'div[class=news_title]';
-                $content_str = 'section[itemprop=articleBody]';
-                $reg_str = '/<p>(.+)<\/p>/s';
-                break;
-            case 'sina':
-                $domain = 'sina';
-                $title_str = 'div[id=articles] h1';
-                $content_str = 'div[class=pcont]';
-                $reg_str = '/<p>(.+)<\/p>/s';
-                break;
-            case 'new0':
-                $domain = 'news0';
-                $title_str = 'h1[itemprop=headline]';
-                $content_str = 'span[itemprop=articleBody]';
-                $reg_str = '/<p>(.+)<\/p>/s';
-                // 處理 url encode
-                $find = array('/%3[a,A]/', '/%2[f,F]/');
-                $replace = array(':', '/');
-                $url =  preg_replace($find, $replace, urlencode($url));
-                break;
-            default:
-                $domain = 'default';
-                break;
+            switch ($host) {
+                case 'udn':
+                    $title_str = 'h2[id=story_art_title]';
+                    $content_str = 'div[id=story_body_content]';
+                    // $reg_str = '/<div id=\"story\".*class=\"area\">(.+?)<\/div>/s';
+                    $reg_str = '/<p>(.+)。[<p>|<\/p>]/s'; // which genius write this code, damm
+                    break;
+                case 'yahoo':
+                    // for yahoo
+                    $title_str = 'h1[class=headline]';
+                    $content_str = 'div[id=mediaarticlebody]';
+                    // $reg_str = '/<!-- google_ad_section_start -->(.+?)<!-- google_ad_section_end -->/s';
+                    $reg_str = '/<p.*>(.+)<\/p>/s';
+                    $find = array('/news\//', '/mobi/', '/\/home/');
+                    $replace = array('', 'news', '');
+                    // $org_str = 'span[class=provider]';
+                    $url =  preg_replace($find, $replace, $url);
+                    $remove_str_arr = ['div[class=yog-col]'];
+                    break;
+                case 'yam':
+                    $title_str = 'li[class=title]';
+                    $content_str = 'div[id=news_content]';
+                    $reg_str = '/<p\s.+>(.+)。/s';
+                    $url = preg_replace('/_pic|\?pic=\d/', '', $url);
+                    break;
+                case 'uho':
+                    $title_str = 'div[id=art_title] div[class=till]';
+                    $content_str = 'div[class=contout]';
+                    $reg_str = '/<p\s.+>(.+)。/s';
+                    break;
+                case 'pchome':
+                    $title_str = 'span[id=iCliCK_SafeGuard]';
+                    $content_str = 'div[id=newsContent]';
+                    $reg_str = '/<div calss=\"article_text\">(.+?)<\/div>/s';
+                    break;
+                case 'nownews':
+                    $title_str = 'h1[itemprop=headline]';
+                    $content_str = 'div[class=story_content]';
+                    // $reg_str = '/<div class=\"story_content\".*>(.+?)<div class=\"page_nav\"/s';
+                    $reg_str = '/<p>(.+)。<\/p>/s';
+                    break;
+                case 'secretchina':
+                    $title_str = 'div[id=content] h2';
+                    $content_str = 'div[class=articlebody]';
+                    $reg_str = '/<p>(.+)。<\/p>/s';
+                    break;
+                case 'appledaily':
+                    $title_str = 'h1[id=h1]';
+                    $content_str = 'div[class=articulum]';
+                    $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                    break;
+                case 'bayvoice':
+                    $title_str = 'h1[id=single_title]';
+                    $content_str = 'article[id=content-body]';
+                    $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                    $url = preg_replace('/gb/s', 'b5', $url);
+                    break;
+                case 'msn':
+                    $content_str = 'section[class=articlebody]';
+                    $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                    break;
+                case 'top1health':
+                    $title_str = 'h2[itemprop=name]';
+                    $content_str = 'div[class=content]';
+                    $reg_str = '/<p>(.+)。<\/p>/s';
+                    break;
+                case 'times-bignews':
+                    $content_str = 'div[class=news_content]';
+                    $reg_str = '/<p>(.+)。<\/p>/s';
+                    break;
+                case 'cna':
+                    $title_str = 'div[class=news_title]';
+                    $content_str = 'section[itemprop=articleBody]';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'sina':
+                    $title_str = 'div[id=articles] h1';
+                    $content_str = 'div[class=pcont]';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'new0':
+                    $title_str = 'h1[itemprop=headline]';
+                    $content_str = 'span[itemprop=articleBody]';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'url':
+                    $title_str = 'h1[class=entry-title]';
+                    $content_str = 'div[class=td-paragraph-padding-1] p';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'epochtimes':
+                    $title_str = 'h1[class=entry-title]';
+                    $content_str = 'div[class=td-paragraph-padding-1]';
+                    $reg_str = '/<span class="author_box_01">(.)+/s';
+                    break;
+                case 'commonhealth':
+                    $title_str = 'h2[class=darkGreen]';
+                    $content_str = 'div[class=commonOutData]';
+                    $reg_str = '/<div class="commonArticle">(.+)。/s';
+                    break;
+                case 'storm':
+                    $title_str = 'h1[id=article_title]';
+                    $content_str = 'div[class=article-wrapper] article';
+                    $reg_str = '/<p>(.+)<\/p>\s*<div class="ad_article_block">/s';
+                    break;
+                case 'qq':
+                    $title_str = 'div[class=hd] h1';
+                    $content_str = 'div[id=Cnt-Main-Article-QQ]';
+                    $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                    break;
+                case 'chinatimes':
+                    $title_str = 'article header h1';
+                    $content_str = 'article[class=clear-fix]';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'ltn':
+                    $title_str = 'div[class=content] h1';
+                    $content_str = 'div[id=newstext]';
+                    $remove_str_arr = ['div[class=pic600]', 'span'];
+                    $reg_str = '/<p>(.+)<\/p>.*<div id="newsad" class="ad">/s';
+                    break;
+                case 'ettoday':
+                    $title_str = 'h2[class=title]';
+                    $content_str = 'div[class=story]';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'peoplenews':
+                    $title_str = 'h1[class=news_title]';
+                    $content_str = 'div[id=newscontent]';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'theinitium':
+                    $title_str = 'h1[class=article-title]';
+                    $content_str = 'div[class=article-content]';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'newtalk':
+                    $title_str = 'div[class=content_title]';
+                    $content_str = 'div[class=news-content]';
+                    $remove_str_arr = ['div[class=news_img]'];
+                    $reg_str = '/<txt>(.+)<\/txt>/s';
+                    break;
+                case 'cts':
+                    $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
+                    break;
+                default:
+                    $host = 'default';
+                    break;
+            }
         }
 
+        // 處理 url encode
+        $find = array('/%3[a,A]/', '/%2[f,F]/', '/%3[f,F]/', '/%3[d,D]/', '/%26/');
+        $replace = array(':', '/', '?', '=', '&');
+        $url =  preg_replace($find, $replace, urlencode($url));
+
         // $url_utf8_encode_str = '/([\\x{4e00}-\\x{9fa5}]+)/u';
-        return array('url' => $url, 'reg_str' => $reg_str, 'domain' => $domain,
-            'dom_str' => $content_str, 'title_str' => $title_str);
+        return array('url' => $url, 'reg_str' => $reg_str, 'domain' => $domain, 'host' => $host,
+            'dom_str' => $content_str, 'title_str' => $title_str, 'remove_str_arr' => $remove_str_arr,
+            'curl_useragent' => $curl_useragent);
     }
 
     /**
@@ -322,6 +391,11 @@ class ApiController extends Controller
         $news_content->save();
     }
 
+    /**
+     * [postNewsSimilars 儲存 餘弦值]
+     * @param  Request $request [傳 url_id、value 進來]
+     * @return [type]           [description]
+     */
     public function postNewsSimilars(Request $request) {
         $url_ids = $request->input('url_ids');
         $value = $request->input('value');
@@ -334,4 +408,91 @@ class ApiController extends Controller
             $news_similars->save();
         }
     }
+
+    /**
+     * [parseURL 解析 url]
+     * @param  [type] $url [description]
+     * @return [type]      [description]
+     */
+    // public function parseURL($url) {
+    //     $parsed_url = [];
+
+    //     if ($url == null || strlen($url) == 0 )
+    //         return $parsed_url;
+
+    //     $protocol_i = strpos($url, '://');
+    //     $parsed_url['protocol'] = substr($url, 0, $protocol_i);
+    //     $remaining_url = substr($url, $protocol_i + 3, strlen($url));
+    //     $domain_i = strpos($remaining_url, '/');
+    //     $domain_i = (!$domain_i) ? strlen($remaining_url) : $domain_i;
+    //     $parsed_url['domain'] = substr($remaining_url, 0, $domain_i);
+    //     $parsed_url['path'] = $domain_i == -1 || $domain_i + 1 == strlen($remaining_url) ? null : substr($remaining_url, $domain_i + 1, strlen($remaining_url));
+
+    //     $domain_parts = explode('.', $parsed_url['domain']);
+    //     // dd($domain_parts);
+    //     switch (count($domain_parts)) {
+    //         case 2:
+    //             $parsed_url['subdomain'] = null;
+    //             $parsed_url['host'] = $domain_parts[0];
+    //             $parsed_url['tld'] = $domain_parts[1];
+    //             break;
+    //         case 3:
+    //             $parsed_url['subdomain'] = $domain_parts[0];
+    //             $parsed_url['host'] = $domain_parts[1];
+    //             $parsed_url['tld'] = $domain_parts[2];
+    //             break;
+    //         case 4:
+    //             $parsed_url['subdomain'] = $domain_parts[0];
+    //             $parsed_url['host'] = $domain_parts[1];
+    //             $parsed_url['tld'] = $domain_parts[2] + '.' + $domain_parts[3];
+    //             break;
+    //         case 5:
+    //             $parsed_url['subdomain'] = $domain_parts[0];
+    //             $parsed_url['host'] = $domain_parts[1];
+    //             $parsed_url['tld'] = $domain_parts[2] + '.' + $domain_parts[3];
+    //             break;
+    //         default:
+    //             $parsed_url['subdomain'] = null;
+    //             $parsed_url['host'] = $domain_parts[0];
+    //             $parsed_url['tld'] = $domain_parts[1];
+    //             break;
+    //     }
+
+    //     $parsed_url['parent_domain'] = $parsed_url['host'] + '.' + $parsed_url['tld'];
+
+    //     return $parsed_url;
+    // }
+
+    /**
+     * [getDoamin 從 whoisxmlapi 取得 domain]
+     * @param  [type] $url [description]
+     * @return [type]      [description]
+     */
+    public function getDoamin($url) {
+        $username="reyes";
+        $password="Axm-Mmt-Xn7-q4y";
+        $contents = file_get_contents("http://www.whoisxmlapi.com/whoisserver/WhoisService?domainName=$url&cmd=GET_DN_AVAILABILITY&username=$username&password=$password&outputFormat=JSON");
+        // dd($contents);
+        $res=json_decode($contents);
+        $parsed_url = [];
+
+        if ($res) {
+            if (property_exists($res, 'ErrorMessage')) {
+                // echo $res->ErrorMessage->msg;
+                // return $res->ErrorMessage->msg;
+            }
+            else {
+                $domainInfo = $res->DomainInfo;
+                if ($domainInfo) {
+                    $domain = $domainInfo->domainName;
+                    $parsed_url['domain'] = $domain;
+                    $parsed_url['host'] = explode('.', $domain)[0];
+                    // echo "Domain name: " . print_r($domainInfo->domainName,1) ."<br/>";
+                    // echo "Domain Availability: " .print_r($domainInfo->domainAvailability,1) ."<br/>";
+                }
+            }
+        }
+        return $parsed_url;
+    }
+
 }
