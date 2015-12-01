@@ -3,7 +3,7 @@
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
 
-class CreateNewsUrlsTable extends Migration
+class CreateUrlDomainsTable extends Migration
 {
     /**
      * Run the migrations.
@@ -12,9 +12,12 @@ class CreateNewsUrlsTable extends Migration
      */
     public function up()
     {
-        Schema::create('news_urls', function(Blueprint $table) {
+        Schema::create('url_domains', function($table) {
             $table->increments('id');
-            $table->text('url');
+            $table->string('url');
+            $table->string('domain');
+            $table->string('subdomain');
+            $table->string('host');
             $table->timestamps();
         });
     }
@@ -26,6 +29,6 @@ class CreateNewsUrlsTable extends Migration
      */
     public function down()
     {
-        Schema::drop('news_urls');
+        Schema::drop('url_domains');
     }
 }

@@ -8,6 +8,7 @@ use Yangqi\Htmldom\Htmldom;
 use App\NewsUrl;
 use App\NewsContent;
 use App\NewsSimilar;
+use App\UrlDomain;
 
 class ApiController extends Controller
 {
@@ -17,22 +18,6 @@ class ApiController extends Controller
      * @return [type]           [內容]
      */
     public function getCurl(Request $request) {
-        // $html = new Htmldom('http://www.nownews.com/n/2015/09/22/1821661');
-        // debug($html);
-
-        // Find all images
-        // foreach($html->find('img') as $element)
-        //        echo $element->src . '<br>';
-
-        // Find all links
-        // foreach($html->find('a') as $element)
-        // echo $element->href . '<br>';
-        // $eles = $html->find('div[class=story_content]');
-
-        // foreach($eles as $e) {
-        //     debug($e->innertext);
-        // }
-
         $url_arr = [];
         $url_clear_arr = [];
         $url = $request->input('url');
@@ -43,8 +28,6 @@ class ApiController extends Controller
         // $org_arr = [];
         $ids_arr = [];
 
-        // return response()->json(['url' => $url])
-        //          ->setCallback($request->input('callback'));
         if (!isset($url))
             return 0;
         // 如果丟進來不是 array, 組成 array
@@ -57,7 +40,6 @@ class ApiController extends Controller
 
         // 分析 array's url
         foreach ($url_arr as $index => $url) {
-            // $url = "http://www.taiwanlottery.com.tw/lotto/DailyCash/history.aspx";
             $clear_url = $this->clearUrl($url);
             $url = $clear_url['url'];
             $reg_str = $clear_url['reg_str'];
@@ -75,7 +57,9 @@ class ApiController extends Controller
             if ($news_url_inst == null || $news_url_inst->newscontent->content == '') {
                 //----- curl start -----//
                 $ch = curl_init();
-
+                // $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
+                // $curl_useragent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:38.0) Gecko/20100101 Firefox/38.0';
+                // dd($curl_useragent);
                 $options = array(
                     CURLOPT_URL => $url,
                     CURLOPT_RETURNTRANSFER => true,
@@ -87,14 +71,17 @@ class ApiController extends Controller
                     CURLOPT_FOLLOWLOCATION => true,
                     CURLOPT_REFERER => $url
                 );
-
+                // dd($curl_useragent);
                 curl_setopt_array($ch, $options);
-                $curl_output = curl_exec($ch);
+                // $curl_output = curl_exec($ch);
+                $curl_output = $this->curl_exec_utf8($ch);
+                // dd($curl_output);
 
                 curl_close($ch);
                 //----- curl end -----//
                 // $html = new Htmldom($url);
                 $html = new Htmldom($curl_output);
+
                 // 如果沒有內容的話，略過。繼續執行下一個
                 if (empty($html->nodes)) {
                     continue;
@@ -118,13 +105,13 @@ class ApiController extends Controller
                     // $origin_output = is_null($html->find($content_str, 0))?'': $html->find($content_str, 0);
                     $title = empty($html->find($title_str, 0))?'': trim($html->find($title_str, 0)->plaintext);
                     // dd($remove_str_arr[1]);
-                    // dd(120, $reg_str, $title, $origin_output);
+                    // dd(107, $reg_str, $title, $origin_output);
                     // $org = $html->find($org_str, 0)->innertext;
                 }
 
                 if ($reg_str != '') {
                     preg_match($reg_str, $origin_output, $metaContentsMatches);
-                    // dd(125, $reg_str, $metaContentsMatches);
+                    // dd(113, $reg_str, $metaContentsMatches);
                 }
 
                 $content_trim = '';
@@ -149,7 +136,7 @@ class ApiController extends Controller
                     // $news_content->author = '';
                     $news_content->content = $content_trim;
                     $news_content->save();
-                    $url_id = $news_content->id;
+                    $url_id = $news_content->url_id;
                 }
                 else if ($news_url_inst->newscontent->content == '') {
                     $news_url_inst->newscontent->article = $title;
@@ -174,7 +161,6 @@ class ApiController extends Controller
             array_push($url_clear_arr, $url);
 
         }
-
 
         /*preg_match("/<meta.*?name=\"description\".*?content=\"(.*?)\".*?>|<meta.*?content=\"(.*?)\".*?name=\"description\".*?>/i", $origin_output, $metaContentsMatches);*/
         /*preg_match("/<meta.*?name=\"description\".*?content=\"(.*?)\".*?>|<meta.*?content=\"(.*?)\".*?name=\"description\".*?>/i", $origin_output, $metaContentsMatches);*/
@@ -208,6 +194,7 @@ class ApiController extends Controller
 
         if (!empty($filter_domain)) {
             $domain = $filter_domain['domain'];
+            $subdomain = $filter_domain['subdomain'];
             $host = $filter_domain['host'];
 
             switch ($host) {
@@ -216,6 +203,12 @@ class ApiController extends Controller
                     $content_str = 'div[id=story_body_content]';
                     // $reg_str = '/<div id=\"story\".*class=\"area\">(.+?)<\/div>/s';
                     $reg_str = '/<p>(.+)。[<p>|<\/p>]/s'; // which genius write this code, damm
+                    $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
+                    if ($subdomain == 'blog') {
+                        $title_str = 'div[class=article_topic]';
+                        $content_str = 'div[id=article_show_content]';
+                        $reg_str = '/(.+<\/p>)/s';
+                    }
                     break;
                 case 'yahoo':
                     // for yahoo
@@ -250,6 +243,7 @@ class ApiController extends Controller
                     $content_str = 'div[class=story_content]';
                     // $reg_str = '/<div class=\"story_content\".*>(.+?)<div class=\"page_nav\"/s';
                     $reg_str = '/<p>(.+)。<\/p>/s';
+                    $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
                     break;
                 case 'secretchina':
                     $title_str = 'div[id=content] h2';
@@ -260,6 +254,7 @@ class ApiController extends Controller
                     $title_str = 'h1[id=h1]';
                     $content_str = 'div[class=articulum]';
                     $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                    // $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
                     break;
                 case 'bayvoice':
                     $title_str = 'h1[id=single_title]';
@@ -335,6 +330,7 @@ class ApiController extends Controller
                     $title_str = 'h2[class=title]';
                     $content_str = 'div[class=story]';
                     $reg_str = '/<p>(.+)<\/p>/s';
+                    $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
                     break;
                 case 'peoplenews':
                     $title_str = 'h1[class=news_title]';
@@ -429,7 +425,30 @@ class ApiController extends Controller
     //     $parsed_url['path'] = $domain_i == -1 || $domain_i + 1 == strlen($remaining_url) ? null : substr($remaining_url, $domain_i + 1, strlen($remaining_url));
 
     //     $domain_parts = explode('.', $parsed_url['domain']);
-    //     // dd($domain_parts);
+
+    //     $ch = curl_init();
+    //     $options = array(
+    //         CURLOPT_URL => "http://whoiz.herokuapp.com/lookup.json?url=".$parsed_url['domain'],
+    //         CURLOPT_RETURNTRANSFER => true,
+    //         // CURLOPT_USERAGENT => $curl_useragent,
+    //         // CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4',
+    //         // CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:38.0) Gecko/20100101 Firefox/38.0',
+    //         // CURLOPT_HEADER => false,
+    //         // CURLOPT_SSL_VERIFYPEER => FALSE,
+    //         // CURLOPT_FOLLOWLOCATION => true,
+    //         // CURLOPT_REFERER => $url
+    //     );
+
+    //     curl_setopt_array($ch, $options);
+    //     $curl_output = curl_exec($ch);
+
+    //     curl_close($ch);
+
+    //     $whois = json_decode($curl_output);
+    //     $parsed_url['domain'] = $whois->domain;
+    //     // $parsed_url['available'] = $whois->available?;
+    //     dd($parsed_url, $whois);
+    //     return json_decode($curl_output);
     //     switch (count($domain_parts)) {
     //         case 2:
     //             $parsed_url['subdomain'] = null;
@@ -471,28 +490,110 @@ class ApiController extends Controller
     public function getDoamin($url) {
         $username="reyes";
         $password="Axm-Mmt-Xn7-q4y";
-        $contents = file_get_contents("http://www.whoisxmlapi.com/whoisserver/WhoisService?domainName=$url&cmd=GET_DN_AVAILABILITY&username=$username&password=$password&outputFormat=JSON");
-        // dd($contents);
-        $res=json_decode($contents);
         $parsed_url = [];
+        $protocol_i = strpos($url, '://');
+        // $parsed_url['protocol'] = substr($url, 0, $protocol_i);
+        $remaining_url = substr($url, $protocol_i + 3, strlen($url));
+        $domain_i = strpos($remaining_url, '/');
+        $domain_i = (!$domain_i) ? strlen($remaining_url) : $domain_i;
+        $parsed_url['url'] = substr($remaining_url, 0, $domain_i);
+        $parsed_url['path'] = $domain_i == -1 || $domain_i + 1 == strlen($remaining_url) ? null : substr($remaining_url, $domain_i + 1, strlen($remaining_url));
 
-        if ($res) {
-            if (property_exists($res, 'ErrorMessage')) {
-                // echo $res->ErrorMessage->msg;
-                // return $res->ErrorMessage->msg;
-            }
-            else {
-                $domainInfo = $res->DomainInfo;
-                if ($domainInfo) {
-                    $domain = $domainInfo->domainName;
-                    $parsed_url['domain'] = $domain;
-                    $parsed_url['host'] = explode('.', $domain)[0];
-                    // echo "Domain name: " . print_r($domainInfo->domainName,1) ."<br/>";
-                    // echo "Domain Availability: " .print_r($domainInfo->domainAvailability,1) ."<br/>";
+
+        $url_domains = new UrlDomain;
+        $url_domains_inst = $url_domains->where('url', $parsed_url['url'])->first();
+
+        if ($url_domains_inst == null) {
+            $contents = file_get_contents("http://www.whoisxmlapi.com/whoisserver/WhoisService?domainName=".$parsed_url['url']."&cmd=GET_DN_AVAILABILITY&username=$username&password=$password&outputFormat=JSON");
+            // dd($contents);
+            $res = json_decode($contents);
+
+            if ($res) {
+                if (property_exists($res, 'ErrorMessage')) {
+                    // echo $res->ErrorMessage->msg;
+                    // return $res->ErrorMessage->msg;
+                }
+                else {
+                    $domainInfo = $res->DomainInfo;
+                    if ($domainInfo) {
+                        $domain = $domainInfo->domainName;
+                        $parsed_url['domain'] = $domain;
+                        $parsed_url['subdomain'] = explode('.'.$domain, $parsed_url['url'])[0];
+                        $parsed_url['host'] = explode('.', $domain)[0];
+                        // echo "Domain name: " . print_r($domainInfo->domainName,1) ."<br/>";
+                        // echo "Domain Availability: " .print_r($domainInfo->domainAvailability,1) ."<br/>";
+                    }
                 }
             }
+
+            // store to database
+            $url_domains->url = $parsed_url['url'];
+            $url_domains->domain = $parsed_url['domain'];
+            $url_domains->subdomain = $parsed_url['subdomain'];
+            $url_domains->host = $parsed_url['host'];
+            $url_domains->save();
         }
+        else {
+            $parsed_url['domain'] = $url_domains_inst->domain;
+            $parsed_url['subdomain'] = $url_domains_inst->subdomain;
+            $parsed_url['host'] = $url_domains_inst->host;
+        }
+
         return $parsed_url;
+    }
+
+    /** The same as curl_exec except tries its best to convert the output to utf8 **/
+    /*
+     * [curl_exec_utf8 description]
+     * @param  [type] $ch [description]
+     * @return [type]     [description]
+     */
+    public function curl_exec_utf8($ch) {
+        $data = curl_exec($ch);
+        if (!is_string($data)) return $data;
+
+        unset($charset);
+        $content_type = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+
+        /* 1: HTTP Content-Type: header */
+        preg_match( '@([\w/+]+)(;\s*charset=(\S+))?@i', $content_type, $matches );
+        if ( isset( $matches[3] ) )
+            $charset = $matches[3];
+
+        /* 2: <meta> element in the page */
+        if (!isset($charset)) {
+            preg_match( '@<meta\s+http-equiv="Content-Type"\s+content="([\w/]+)(;\s*charset=([^\s"]+))?@i', $data, $matches );
+            if ( isset( $matches[3] ) )
+                $charset = $matches[3];
+        }
+
+        /* 3: <xml> element in the page */
+        if (!isset($charset)) {
+            preg_match( '@<\?xml.+encoding="([^\s"]+)@si', $data, $matches );
+            if ( isset( $matches[1] ) )
+                $charset = $matches[1];
+        }
+
+        /* 4: PHP's heuristic detection */
+        if (!isset($charset)) {
+            $encoding = mb_detect_encoding($data);
+            if ($encoding)
+                $charset = $encoding;
+        }
+
+        /* 5: Default for HTML */
+        if (!isset($charset)) {
+            if (strstr($content_type, "text/html") === 0)
+                $charset = "ISO 8859-1";
+        }
+
+        /* Convert it if it is anything but UTF-8 */
+        /* You can change "UTF-8"  to "UTF-8//IGNORE" to
+           ignore conversion errors and still output something reasonable */
+        if (isset($charset) && strtoupper($charset) != "UTF-8")
+            $data = iconv($charset, 'UTF-8', $data);
+
+        return $data;
     }
 
 }
