@@ -67,6 +67,8 @@ class ApiController extends Controller
                     // CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4',
                     // CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:38.0) Gecko/20100101 Firefox/38.0',
                     CURLOPT_HEADER => false,
+                    CURLOPT_TIMEOUT_MS => 3500,
+                    // CURLOPT_CONNECTTIMEOUT_MS => 100,
                     CURLOPT_SSL_VERIFYPEER => FALSE,
                     CURLOPT_FOLLOWLOCATION => true,
                     CURLOPT_REFERER => $url
@@ -75,7 +77,13 @@ class ApiController extends Controller
                 curl_setopt_array($ch, $options);
                 // $curl_output = curl_exec($ch);
                 $curl_output = $this->curl_exec_utf8($ch);
-                // dd($curl_output);
+
+                if (curl_errno($ch))
+                {
+                    // echo 'error:' . curl_error($ch);
+                    // return response()->json(['message' => 'error'])->setCallback($request->input('callback'));
+                    continue;
+                }
 
                 curl_close($ch);
                 //----- curl end -----//
@@ -88,6 +96,7 @@ class ApiController extends Controller
                 }
 
                 $title = '';
+                // dd($host);
                 if ($host != 'default') {
                     // $origin_output = is_null($html->find($content_str, 0))?'': $html->find($content_str, 0)->innertext;
                     if (is_null($html->find($content_str, 0)) || empty($html->find($content_str, 0))) {
@@ -108,6 +117,9 @@ class ApiController extends Controller
                     // dd(107, $reg_str, $title, $origin_output);
                     // $org = $html->find($org_str, 0)->innertext;
                 }
+                else {
+                    $origin_output = '';
+                }
 
                 if ($reg_str != '') {
                     preg_match($reg_str, $origin_output, $metaContentsMatches);
@@ -121,7 +133,7 @@ class ApiController extends Controller
                     $content_clean_tags =  preg_replace($find, $replace, $metaContentsMatches);
                     // $content_clean_tags = preg_replace('/<[^>]*>/', '', $metaContentsMatches);
                     // dd(134, $metaContentsMatches);
-                    preg_match('/(.*。)/s', $content_clean_tags[0], $content);
+                    preg_match('/(.*)/s', $content_clean_tags[0], $content);
                     $content_trim = trim(preg_replace('/&nbsp;/', '', $content[1]));
                 }
                 // dd(138, $content_trim);
@@ -162,13 +174,8 @@ class ApiController extends Controller
 
         }
 
-        /*preg_match("/<meta.*?name=\"description\".*?content=\"(.*?)\".*?>|<meta.*?content=\"(.*?)\".*?name=\"description\".*?>/i", $origin_output, $metaContentsMatches);*/
-        /*preg_match("/<meta.*?name=\"description\".*?content=\"(.*?)\".*?>|<meta.*?content=\"(.*?)\".*?name=\"description\".*?>/i", $origin_output, $metaContentsMatches);*/
-        // $tables = array();
-        // return string($origin_output);
-        // echo html_entity_decode($origin_output);
         return response()->json(['domain' => $domain_arr, 'host' => $host_arr, 'content' => $content_trim_arr, 'url' => $url_clear_arr,
-            'id' => $ids_arr, 'title' => $title_arr])->setCallback($request->input('callback'));
+            'id' => $ids_arr, 'title' => $title_arr, 'message' => 'ok'])->setCallback($request->input('callback'));
         // return response()->json(['url' => $url])
         //          ->setCallback($request->input('callback'));
         // return response()->json(['content' => $content_clean_tags[0]]);
@@ -216,8 +223,8 @@ class ApiController extends Controller
                     $content_str = 'div[id=mediaarticlebody]';
                     // $reg_str = '/<!-- google_ad_section_start -->(.+?)<!-- google_ad_section_end -->/s';
                     $reg_str = '/<p.*>(.+)<\/p>/s';
-                    $find = array('/news\//', '/mobi/', '/\/home/');
-                    $replace = array('', 'news', '');
+                    $find = array('/news\//', '/mobi/', '/\/home/', '/\/tech/', '/\/sports/');
+                    $replace = array('', 'news', '', '', '');
                     // $org_str = 'span[class=provider]';
                     $url =  preg_replace($find, $replace, $url);
                     $remove_str_arr = ['div[class=yog-col]'];
@@ -350,6 +357,25 @@ class ApiController extends Controller
                     break;
                 case 'cts':
                     $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
+                    break;
+                case 'setn':
+                    $title_str = 'div[class=title] h1';
+                    $content_str = 'div[id=Content1]';
+                    $remove_str_arr = ['img', 'a', 'div[class=SET_FB]'];
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'tvbs':
+                    $title_str = 'div[class=reandr_title] h2';
+                    $content_str = 'div[class=textContent]';
+                    $remove_str_arr = ['img', 'strong'];
+                    $curl_useragent = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4';
+                    $reg_str = '/<p>(.+)<\/p>/s';
+                    break;
+                case 'hi-on':
+                    $title_str = 'div[class=title]';
+                    $content_str = 'div[id=message]';
+                    $remove_str_arr = ['a'];
+                    $reg_str = '/<p>(.+)<\/p>/s';
                     break;
                 default:
                     $host = 'default';
@@ -519,6 +545,9 @@ class ApiController extends Controller
                         $domain = $domainInfo->domainName;
                         $parsed_url['domain'] = $domain;
                         $parsed_url['subdomain'] = explode('.'.$domain, $parsed_url['url'])[0];
+                        if ($parsed_url['subdomain'] == $domain) {
+                            $parsed_url['subdomain'] = '';
+                        }
                         $parsed_url['host'] = explode('.', $domain)[0];
                         // echo "Domain name: " . print_r($domainInfo->domainName,1) ."<br/>";
                         // echo "Domain Availability: " .print_r($domainInfo->domainAvailability,1) ."<br/>";
