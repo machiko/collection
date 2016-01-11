@@ -96,7 +96,7 @@ class ApiController extends Controller
                 }
 
                 $title = '';
-                // dd($host);
+
                 if ($host != 'default') {
                     // $origin_output = is_null($html->find($content_str, 0))?'': $html->find($content_str, 0)->innertext;
                     if (is_null($html->find($content_str, 0)) || empty($html->find($content_str, 0))) {
@@ -113,8 +113,9 @@ class ApiController extends Controller
                     }
                     // $origin_output = is_null($html->find($content_str, 0))?'': $html->find($content_str, 0);
                     $title = empty($html->find($title_str, 0))?'': trim($html->find($title_str, 0)->plaintext);
+                    // dd($html->find('title', 0)->plaintext);
                     // dd($remove_str_arr[1]);
-                    // dd(107, $reg_str, $title, $origin_output);
+                    // dd(117, $reg_str, $title, $origin_output);
                     // $org = $html->find($org_str, 0)->innertext;
                 }
                 else {
@@ -123,13 +124,13 @@ class ApiController extends Controller
 
                 if ($reg_str != '') {
                     preg_match($reg_str, $origin_output, $metaContentsMatches);
-                    // dd(113, $reg_str, $metaContentsMatches);
+                    // dd(127, $reg_str, $origin_output, $metaContentsMatches);
                 }
 
                 $content_trim = '';
                 if ($domain != 'default' && $origin_output != '' && !empty($metaContentsMatches)) {
-                    $find = array('/<script.*>.*<\/script>/','/<[^>]*>/', '/\t/');
-                    $replace = array('', '', '');
+                    $find = array('/<script.*>.*<\/script>/','/<[^>]*>/', '/\t/', '/,/');
+                    $replace = array('', '', '', '');
                     $content_clean_tags =  preg_replace($find, $replace, $metaContentsMatches);
                     // $content_clean_tags = preg_replace('/<[^>]*>/', '', $metaContentsMatches);
                     // dd(134, $metaContentsMatches);
@@ -196,6 +197,17 @@ class ApiController extends Controller
         $domain = 'default';
         $curl_useragent = 'Google Bot';
         // preg_match('/http[s]?:\/\/(.*\.)?(.*)\.(com|net|mg|tw)/', $url, $filter_domain);
+        // 過濾出正確網址
+        // 例如 http://61.219.29.200/gb/health.cna.com.tw/healthnews/20151029S008.aspx
+        // http://health.cna.com.tw/healthnews/20151029S008.aspx
+        preg_match('/http[s]?:\/\/(.*\/)?.*\.(com|net|mg|tw)/', $url, $filter_url);
+        if (!empty($filter_url[1])) {
+            // dd(addslashes($filter_url[1]), $url);
+            // dd($filter_url[1]);
+            $filter_url[1] = preg_replace("/\//", "\/", $filter_url[1]);
+            $url = preg_replace("/$filter_url[1]/", "", $url);
+        }
+
         // $filter_domain = $this->parseURL($url);
         $filter_domain = $this->getDoamin($url);
 
@@ -226,7 +238,7 @@ class ApiController extends Controller
                     $find = array('/news\//', '/mobi/', '/\/home/', '/\/tech/', '/\/sports/');
                     $replace = array('', 'news', '', '', '');
                     // $org_str = 'span[class=provider]';
-                    $url =  preg_replace($find, $replace, $url);
+                    $url = preg_replace($find, $replace, $url);
                     $remove_str_arr = ['div[class=yog-col]'];
                     break;
                 case 'yam':
@@ -377,6 +389,12 @@ class ApiController extends Controller
                     $remove_str_arr = ['a'];
                     $reg_str = '/<p>(.+)<\/p>/s';
                     break;
+                case 'knowing':
+                    $title_str = 'title';
+                    $content_str = 'div[class=content]';
+                    $remove_str_arr = ['ul[id=knowing_links]'];
+                    $reg_str = '/<p\s.*>(.+)<\/p>/s';
+                    break;
                 default:
                     $host = 'default';
                     break;
@@ -514,8 +532,8 @@ class ApiController extends Controller
      * @return [type]      [description]
      */
     public function getDoamin($url) {
-        $username="reyes";
-        $password="Axm-Mmt-Xn7-q4y";
+        $username="machiko";
+        $password="qazxsw";
         $parsed_url = [];
         $protocol_i = strpos($url, '://');
         // $parsed_url['protocol'] = substr($url, 0, $protocol_i);
@@ -531,7 +549,6 @@ class ApiController extends Controller
 
         if ($url_domains_inst == null) {
             $contents = file_get_contents("http://www.whoisxmlapi.com/whoisserver/WhoisService?domainName=".$parsed_url['url']."&cmd=GET_DN_AVAILABILITY&username=$username&password=$password&outputFormat=JSON");
-            // dd($contents);
             $res = json_decode($contents);
 
             if ($res) {
@@ -620,7 +637,19 @@ class ApiController extends Controller
         /* You can change "UTF-8"  to "UTF-8//IGNORE" to
            ignore conversion errors and still output something reasonable */
         if (isset($charset) && strtoupper($charset) != "UTF-8")
-            $data = iconv($charset, 'UTF-8', $data);
+            // debug($charset, mb_convert_encoding($data, 'utf-8', 'GBK,UTF-8,ASCII'));
+            // 處理簡體網站
+            if ($charset == 'GB2312' || $charset == 'gb2312') {
+                $data = mb_convert_encoding($data, 'utf-8', 'GBK,UTF-8,ASCII');
+            }
+            else if ($charset == 'big5' || $charset == 'BIG5') {
+                $data = mb_convert_encoding($data, "utf-8", $charset);
+            }
+            else {
+                $data = iconv($charset, 'UTF-8', $data);
+            }
+
+            // dd($data);
 
         return $data;
     }
